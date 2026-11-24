@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>箱体雷达</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif; background:#f2f3f5; color:#1f2329; font-size:15px; padding-bottom:80px; }
+  .topbar { position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid #e5e6eb; display:flex; align-items:center; padding:10px 12px; gap:8px; }
+  .topbar h1 { font-size:17px; margin:0; flex:1; }
+  .btn { border:none; border-radius:8px; padding:8px 12px; font-size:14px; background:#e8f3ff; color:#1664ff; }
+  .btn.primary { background:#1664ff; color:#fff; }
+  .btn.danger { background:#ffece8; color:#f53f3f; }
+  .btn.plain { background:#f2f3f5; color:#1f2329; }
+  .btn.small-btn { padding:4px 8px; font-size:12px; border-radius:6px; }
+  .btn:active { opacity:.7; }
+  .tabbar { position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid #e5e6eb; display:flex; padding:6px 0 calc(6px + env(safe-area-inset-bottom)); z-index:20; }
+  .tabbar button { flex:1; border:none; background:transparent; font-size:12px; color:#86909c; padding:4px; }
+  .tabbar button.active { color:#1664ff; font-weight:600; }
+  .page { padding:12px; }
+  .card { background:#fff; border-radius:12px; padding:12px; margin-bottom:10px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .row { display:flex; align-items:center; gap:8px; }
+  .row.between { justify-content:space-between; }
+  .muted { color:#86909c; font-size:12px; }
+  .stock-item { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid #f2f3f5; }
+  .stock-item:last-child { border-bottom:none; }
+  .stock-name { font-weight:600; }
+  .stock-code { font-size:12px; color:#86909c; margin-left:6px; }
+  .period-card { border:1px solid #e5e6eb; border-radius:10px; padding:10px; margin-bottom:10px; }
+  .period-card.hot { border-color:#f53f3f; background:#fff7f5; }
+  .period-title { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .period-title strong { font-size:15px; }
+  .tag { font-size:11px; padding:2px 6px; border-radius:4px; background:#f2f3f5; color:#86909c; }
+  .tag.hot { background:#ffece8; color:#f53f3f; }
+  .kv { display:flex; justify-content:space-between; font-size:13px; padding:3px 0; }
+  .kv span:first-child { color:#86909c; }
+  .price-big { font-size:17px; font-weight:800; color:#f53f3f; }
+  .price-big.warn { background:#ffece8; border-radius:4px; padding:0 4px; }
+  .input-line { display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap; }
+  .input-line input { flex:1; min-width:0; border:1px solid #d9d9d9; border-radius:6px; padding:7px 8px; font-size:14px; background:#fff; }
+  .input-line input.small { width:80px; flex:none; }
+  .input-line input.timeInput { width:132px; flex:none; }
+  .input-line input.priceInput { width:88px; flex:none; }
+  .edit-line { display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap; }
+  .edit-line input { width:80px; border:1px solid #d9d9d9; border-radius:6px; padding:6px 8px; font-size:14px; background:#fff; }
+  .edit-line input.timeInput { width:132px; }
+  .edit-line input.priceInput { width:88px; }
+  .history { margin-top:8px; border-top:1px dashed #e5e6eb; padding-top:6px; }
+  .history summary { cursor:pointer; color:#1f2329; font-size:13px; font-weight:700; }
+  .history-item { font-size:12px; color:#4e5969; padding:6px 0; border-bottom:1px dashed #f2f3f5; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .history-item .price-old { color:#4e5969; }
+  .sub-block { margin-top:10px; padding-top:8px; border-top:1px dashed #e5e6eb; }
+  .sub-title { font-size:13px; font-weight:700; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }
+  .empty { text-align:center; color:#86909c; padding:30px 10px; font-size:14px; }
+  textarea { width:100%; min-height:220px; border:1px solid #d9d9d9; border-radius:8px; padding:10px; font-size:12px; font-family: ui-monospace, Menlo, monospace; background:#fff; }
+  .notice { background:#fff7e8; color:#d25f00; border-radius:8px; padding:8px 10px; font-size:12px; margin-bottom:10px; }
+  .hidden { display:none; }
+  .name-input { width:100%; border:1px solid #d9d9d9; border-radius:6px; padding:7px 8px; font-size:14px; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1 id="pageTitle">自选股</h1>
+  <button class="btn" id="btnRefreshAll">刷新全部</button>
+</div>
+
+<div id="pageList" class="page">
+  <div class="card">
+    <div class="row">
+      <input id="addCode" class="name-input" inputmode="numeric" maxlength="6" placeholder="输入6位股票代码，如 600519" style="margin-top:0;">
+      <button class="btn primary" id="btnAdd">添加</button>
+    </div>
+    <div class="muted" style="margin-top:6px;">最多10只，代码自动补市场前缀，名称自动获取，失败可手动补。</div>
+  </div>
+  <div class="card" id="stockList"></div>
+</div>
+
+<div id="pageDetail" class="page hidden"></div>
+
+<div id="pageListToday" class="page hidden">
+  <div class="notice">今日清单：只列当前生效箱体和当前生效趋势线。箱体压力预警=上沿下方2%内；箱体支撑预警=下沿上方2%内；趋势线压力=线下方2%内；趋势线支撑=线上方2%内。</div>
+  <div id="todayList"></div>
+</div>
+
+<div id="pageBackup" class="page hidden">
+  <div class="notice">备份包含股票名称、各级别当前/历史箱体和趋势线，不含底仓和做T数量。导出后复制到备忘录；导入时粘贴文本。</div>
+  <div class="card">
+    <div class="row between" style="margin-bottom:8px;">
+      <strong>备份文本</strong>
+      <button class="btn" id="btnExport">生成备份</button>
+    </div>
+    <textarea id="backupText" placeholder="点“生成备份”后出现文本；导入时把备份文本粘贴到这里，再点“导入备份”。"></textarea>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button class="btn primary" id="btnImport">导入备份</button>
+      <button class="btn danger" id="btnClearAll">清空全部数据</button>
+    </div>
+  </div>
+</div>
+
+<div class="tabbar">
+  <button data-tab="list" class="active">自选</button>
+  <button data-tab="today">今日清单</button>
+  <button data-tab="backup">备份</button>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var PERIODS = ['20', '60', '180', '540'];
+  var STORAGE_KEY = 'stock_box_radar_v6';
+  var state = loadState();
+  var currentStockCode = null;
+
+  function loadState(){
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return migrate(JSON.parse(raw));
+    } catch(e) {}
+    return { stocks: [] };
+  }
+  function migrate(st){
+    if (!st || !st.stocks) return { stocks: [] };
+    st.stocks.forEach(function(s){
+      if (!s.periods) s.periods = {};
+      PERIODS.forEach(function(p){
+        if (!s.periods[p]) s.periods[p] = { current: null, history: [], trendCurrent: null, trendHistory: [] };
+        if (!s.periods[p].history) s.periods[p].history = [];
+        if (!s.periods[p].trendHistory) s.periods[p].trendHistory = [];
+        s.periods[p].history.forEach(function(h, i){
+          if (!h.id) h.id = p + '_' + i + '_' + (h.setTime || '') + '_' + Math.random().toString(36).slice(2, 7);
+        });
+        if (s.periods[p].current && !s.periods[p].current.id) {
+          s.periods[p].current.id = 'cur_' + p + '_' + Math.random().toString(36).slice(2, 7);
+        }
+        s.periods[p].trendHistory.forEach(function(h, i){
+          if (!h.id) h.id = 't_' + p + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
+        });
+        if (s.periods[p].trendCurrent && !s.periods[p].trendCurrent.id) {
+          s.periods[p].trendCurrent.id = 'tcur_' + p + '_' + Math.random().toString(36).slice(2, 7);
+        }
+      });
+    });
+    return st;
+  }
+  function saveState(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) { alert('本地存储失败，可能是隐私模式或空间不足'); }
+  }
+  function nowStr(){
+    var d = new Date();
+    function p(n){ return n<10 ? '0'+n : ''+n; }
+    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+  }
+  function uid(prefix){ return (prefix || 'id') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); }
+  function prefixOf(code){
+    if (/^[69]/.test(code)) return 'sh';
+    if (/^[03]/.test(code)) return 'sz';
+    if (/^[48]/.test(code)) return 'bj';
+    return 'sh';
+  }
+  function fullCode(code){ return prefixOf(code) + code; }
+  function findStock(code){ return state.stocks.find(function(s){ return s.code === code; }); }
+  function ensurePeriod(stock, p){
+    if (!stock.periods) stock.periods = {};
+    if (!stock.periods[p]) stock.periods[p] = { current: null, history: [], trendCurrent: null, trendHistory: [] };
+    if (!stock.periods[p].history) stock.periods[p].history = [];
+    if (!stock.periods[p].trendHistory) stock.periods[p].trendHistory = [];
+    return stock.periods[p];
+  }
+  function addStock(code){
+    code = (code||'').trim();
+    if (!/^\d{6}$/.test(code)) { alert('请输入6位数字代码'); return; }
+    if (state.stocks.length >= 10) { alert('最多10只'); return; }
+    if (findStock(code)) { alert('已在自选中'); return; }
+    var s = { code: code, name: code, baseQty: '', tQty: '', currentPrice: null, manualPrice: null, periods: {} };
+    PERIODS.forEach(function(p){ s.periods[p] = { current: null, history: [], trendCurrent: null, trendHistory: [] }; });
+    state.stocks.push(s);
+    saveState();
+    renderList();
+    fetchName(code);
+  }
+  function fetchName(code){
+    var s = findStock(code); if (!s) return;
+    var fc = fullCode(code);
+    var script = document.createElement('script');
+    script.charset = 'gbk';
+    script.src = 'https://qt.gtimg.cn/q=' + fc + '&_=' + Date.now();
+    script.onload = function(){
+      try {
+        var v = window['v_' + fc];
+        if (v) {
+          var parts = v.split('~');
+          if (parts[1]) { s.name = parts[1]; saveState(); renderList(); if (currentStockCode === code) renderDetail(); }
+        }
+      } catch(e) {}
+      script.remove();
+    };
+    script.onerror = function(){ script.remove(); };
+    document.body.appendChild(script);
+  }
+  function refreshPrice(code, cb){
+    var s = findStock(code); if (!s) { cb && cb(); return; }
+    var fc = fullCode(code);
+    var script = document.createElement('script');
+    script.charset = 'gbk';
+    script.src = 'https://qt.gtimg.cn/q=' + fc + '&_=' + Date.now();
+    script.onload = function(){
+      try {
+        var v = window['v_' + fc];
+        if (v) {
+          var parts = v.split('~');
+          var price = parseFloat(parts[3]);
+          if (!isNaN(price) && price > 0) {
+            s.currentPrice = price;
+            if (!s.name || s.name === code) { if (parts[1]) s.name = parts[1]; }
+            saveState();
+          }
+        }
+      } catch(e) {}
+      script.remove();
+      cb && cb();
+    };
+    script.onerror = function(){ script.remove(); cb && cb(); };
+    document.body.appendChild(script);
+  }
+  function refreshAll(cb){
+    var i = 0;
+    function next(){
+      if (i >= state.stocks.length) { saveState(); renderList(); if (currentStockCode) renderDetail(); renderToday(); cb && cb(); return; }
+      refreshPrice(state.stocks[i].code, function(){ i++; next(); });
+    }
+    next();
+  }
+  function priceOf(s){
+    if (s.currentPrice != null) return s.currentPrice;
+    if (s.manualPrice != null && s.manualPrice !== '') return parseFloat(s.manualPrice);
+    return null;
+  }
+
+  // 解析紧凑时间：20251105 10:45 或 20251105 1045
+  function parseCompactTime(str){
+    if (!str) return NaN;
+    str = String(str).trim().replace(/\s+/g, ' ');
+    var m = str.match(/^(\d{4})(\d{2})(\d{2})\s*(\d{1,2}):?(\d{2})$/);
+    if (!m) return NaN;
+    var y = parseInt(m[1],10), mo = parseInt(m[2],10)-1, d = parseInt(m[3],10);
+    var h = parseInt(m[4],10), mi = parseInt(m[5],10);
+    var t = new Date(y, mo, d, h, mi).getTime();
+    return isNaN(t) ? NaN : t;
+  }
+  function trendLinePrice(tr, atTime){
+    var t1 = parseCompactTime(tr.startTime), t2 = parseCompactTime(tr.endTime);
+    if (isNaN(t1) || isNaN(t2) || t2 === t1) return NaN;
+    var p1 = parseFloat(tr.startPrice), p2 = parseFloat(tr.endPrice);
+    if (isNaN(p1) || isNaN(p2)) return NaN;
+    var slope = (p2 - p1) / (t2 - t1);
+    return p1 + slope * (atTime - t1);
+  }
+  function trendDistInfo(s, p){
+    var period = s.periods && s.periods[p];
+    if (!period || !period.trendCurrent) return null;
+    var price = priceOf(s);
+    if (price == null || isNaN(price)) return null;
+    var line = trendLinePrice(period.trendCurrent, Date.now());
+    if (isNaN(line)) return null;
+    var d = (price - line) / line * 100;
+    var nearBelow = price <= line && price >= line * 0.98;
+    var nearAbove = price >= line && price <= line * 1.02;
+    var mode = period.trendCurrent.mode || 'pressure';
+    var near = mode === 'pressure' ? nearBelow : nearAbove;
+    return { price: price, line: line, d: d, near: near, mode: mode, hot: near };
+  }
+
+  function distInfo(s, p){
+    var period = s.periods && s.periods[p];
+    if (!period || !period.current) return null;
+    var price = priceOf(s);
+    if (price == null || isNaN(price)) return null;
+    var up = parseFloat(period.current.upper);
+    var low = parseFloat(period.current.lower);
+    if (isNaN(up) || isNaN(low)) return null;
+    var dUp = (price - up) / up * 100;
+    var dLow = (price - low) / low * 100;
+    var nearUp = price <= up && price >= up * 0.98;
+    var nearLow = price >= low && price <= low * 1.02;
+    return { price: price, up: up, low: low, dUp: dUp, dLow: dLow, nearUp: nearUp, nearLow: nearLow, hot: nearUp || nearLow };
+  }
+
+  function renderList(){
+    var box = document.getElementById('stockList');
+    if (!state.stocks.length) { box.innerHTML = '<div class="empty">还没有自选股，先输入6位代码添加。</div>'; return; }
+    var html = '';
+    state.stocks.forEach(function(s){
+      var price = priceOf(s);
+      html += '<div class="stock-item" data-code="'+s.code+'">' +
+        '<div><div class="stock-name">'+escapeHtml(s.name)+'<span class="stock-code">'+s.code+'</span></div>' +
+        '<div class="muted">现价：'+(price==null?'未刷新':price)+'</div></div>' +
+        '<button class="btn plain btn-open">查看</button></div>';
+    });
+    box.innerHTML = html;
+    box.querySelectorAll('.btn-open').forEach(function(btn){
+      btn.onclick = function(){ var code = btn.closest('.stock-item').dataset.code; openDetail(code); };
+    });
+  }
+
+  function openDetail(code){
+    currentStockCode = code;
+    document.getElementById('pageList').classList.add('hidden');
+    document.getElementById('pageListToday').classList.add('hidden');
+    document.getElementById('pageBackup').classList.add('hidden');
+    document.getElementById('pageDetail').classList.remove('hidden');
+    document.getElementById('pageTitle').textContent = '股票详情';
+    renderDetail();
+  }
+  function closeDetail(){
+    currentStockCode = null;
+    document.getElementById('pageDetail').classList.add('hidden');
+    document.getElementById('pageList').classList.remove('hidden');
+    document.getElementById('pageTitle').textContent = '自选股';
+    renderList();
+  }
+
+  function useHistoryBox(s, p, histId){
+    var period = ensurePeriod(s, p);
+    var idx = -1;
+    for (var i=0; i<period.history.length; i++) {
+      if (period.history[i].id === histId) { idx = i; break; }
+    }
+    if (idx < 0) return;
+    var h = period.history[idx];
+    var t = nowStr();
+    if (period.current) {
+      period.history.push({ id: uid('h'), upper: period.current.upper, lower: period.current.lower, setTime: period.current.setTime, replaceTime: t });
+    }
+    period.history.splice(idx, 1);
+    period.current = { id: uid('cur'), upper: h.upper, lower: h.lower, setTime: h.setTime };
+    saveState(); renderDetail();
+  }
+  function useHistoryTrend(s, p, histId){
+    var period = ensurePeriod(s, p);
+    var idx = -1;
+    for (var i=0; i<period.trendHistory.length; i++) {
+      if (period.trendHistory[i].id === histId) { idx = i; break; }
+    }
+    if (idx < 0) return;
+    var h = period.trendHistory[idx];
+    var t = nowStr();
+    if (period.trendCurrent) {
+      period.trendHistory.push({ id: uid('t'), startTime: period.trendCurrent.startTime, startPrice: period.trendCurrent.startPrice, endTime: period.trendCurrent.endTime, endPrice: period.trendCurrent.endPrice, mode: period.trendCurrent.mode, setTime: period.trendCurrent.setTime, replaceTime: t });
+    }
+    period.trendHistory.splice(idx, 1);
+    period.trendCurrent = { id: uid('tcur'), startTime: h.startTime, startPrice: h.startPrice, endTime: h.endTime, endPrice: h.endPrice, mode: h.mode, setTime: h.setTime };
+    saveState(); renderDetail();
+  }
+
+  function renderDetail(){
+    var s = findStock(currentStockCode); if (!s) { closeDetail(); return; }
+    var box = document.getElementById('pageDetail');
+    var price = priceOf(s);
+    var html = '<button class="btn plain" id="btnBack" style="margin-bottom:10px;">← 返回自选</button>';
+    html += '<div class="card">';
+    html += '<div class="row between"><strong>'+escapeHtml(s.name)+'</strong><span class="muted">'+s.code+'</span></div>';
+    html += '<div class="name-input-row" style="margin-top:8px;">名称手动补：<input class="name-input" id="nameInput" value="'+escapeAttr(s.name)+'"></div>';
+    html += '<div class="input-line"><span class="muted">底仓数量</span><input class="small" id="baseQty" value="'+escapeAttr(s.baseQty)+'" inputmode="numeric"><span class="muted">做T数量</span><input class="small" id="tQty" value="'+escapeAttr(s.tQty)+'" inputmode="numeric"></div>';
+    html += '<div class="input-line"><span class="muted">手动现价</span><input class="small" id="manualPrice" value="'+escapeAttr(s.manualPrice==null?'':s.manualPrice)+'" inputmode="decimal"><button class="btn" id="btnSaveManual">保存</button></div>';
+    html += '<div class="muted" style="margin-top:6px;">当前现价：'+(price==null?'未刷新/未手动输入':price)+'</div>';
+    html += '</div>';
+
+    PERIODS.forEach(function(p){
+      var period = ensurePeriod(s, p);
+      var info = distInfo(s, p);
+      var tinfo = trendDistInfo(s, p);
+      var hot = (info && info.hot) || (tinfo && tinfo.hot);
+      html += '<div class="period-card '+(hot?'hot':'')+'">';
+      html += '<div class="period-title"><strong>'+p+'分钟</strong>'+(hot?'<span class="tag hot">进入预警区</span>':'<span class="tag">'+(period.current||period.trendCurrent?'生效中':'未设置')+'</span>')+'</div>';
+
+      // 箱体
+      html += '<div class="sub-title">水平箱体</div>';
+      if (period.current) {
+        html += '<div class="kv"><span>当前上沿（压力）</span><span class="price-big '+(info&&info.nearUp?'warn':'')+'">'+period.current.upper+'</span></div>';
+        html += '<div class="kv"><span>当前下沿（支撑）</span><span class="price-big '+(info&&info.nearLow?'warn':'')+'">'+period.current.lower+'</span></div>';
+        html += '<div class="kv"><span>框定时间</span><span>'+period.current.setTime+'</span></div>';
+        if (info) {
+          html += '<div class="kv"><span>距上沿</span><span class="price-big">'+(info.dUp>=0?'+':'')+info.dUp.toFixed(2)+'%'+(info.nearUp?' ⚠️ 压力预警':'')+'</span></div>';
+          html += '<div class="kv"><span>距下沿</span><span class="price-big">'+(info.dLow>=0?'+':'')+info.dLow.toFixed(2)+'%'+(info.nearLow?' ⚠️ 支撑预警':'')+'</span></div>';
+          html += '<div class="muted">压力预警区：上沿下方2%内；支撑预警区：下沿上方2%内</div>';
+        } else {
+          html += '<div class="muted">刷新行情或手动输入现价后计算距离</div>';
+        }
+        html += '<div style="margin-top:8px;"><button class="btn small-btn" data-edit="'+p+'">修改当前箱体</button></div>';
+        html += '<div class="edit-line hidden" id="edit-'+p+'">' +
+          '<input class="editUp" inputmode="decimal" value="'+escapeAttr(period.current.upper)+'">' +
+          '<span class="muted">/</span>' +
+          '<input class="editLow" inputmode="decimal" value="'+escapeAttr(period.current.lower)+'">' +
+          '<button class="btn primary small-btn btnSaveEdit" data-edit-save="'+p+'">保存修改</button>' +
+          '<button class="btn plain small-btn btnCancelEdit" data-edit-cancel="'+p+'">取消</button>' +
+          '</div>';
+      } else {
+        html += '<div class="muted">暂未设置当前箱体</div>';
+      }
+      html += '<div class="input-line"><span class="muted">新箱体上沿</span><input class="small upInput" inputmode="decimal" placeholder="上沿价"><span class="muted">下沿</span><input class="small lowInput" inputmode="decimal" placeholder="下沿价"><button class="btn primary btnSetBox" data-period="'+p+'">设为当前箱体</button></div>';
+      if (period.history && period.history.length) {
+        html += '<details class="history" open><summary>历史箱体（'+period.history.length+'）</summary>';
+        period.history.slice().reverse().forEach(function(h){
+          html += '<div class="history-item">' +
+            '<div>上沿 <span class="price-old">'+h.upper+'</span> / 下沿 <span class="price-old">'+h.lower+'</span><br>框定 '+h.setTime+' / 替换 '+h.replaceTime+'</div>' +
+            '<button class="btn plain small-btn btnUseHist" data-hist-id="'+h.id+'" data-period="'+p+'">沿用此箱体</button>' +
+            '</div>';
+        });
+        html += '</details>';
+      }
+
+      // 趋势线：紧凑时间格式
+      html += '<div class="sub-block"><div class="sub-title">倾斜趋势线 <span class="muted" style="font-weight:400;">时间格式：20251105 10:45</span></div>';
+      if (period.trendCurrent) {
+        var tr = period.trendCurrent;
+        var modeLabel = tr.mode === 'support' ? '支撑线' : '压力线';
+        html += '<div class="kv"><span>类型</span><span class="price-big">'+modeLabel+'</span></div>';
+        html += '<div class="kv"><span>起点</span><span>'+tr.startTime+' / '+tr.startPrice+'</span></div>';
+        html += '<div class="kv"><span>终点</span><span>'+tr.endTime+' / '+tr.endPrice+'</span></div>';
+        html += '<div class="kv"><span>框定时间</span><span>'+tr.setTime+'</span></div>';
+        if (tinfo) {
+          html += '<div class="kv"><span>当前线价</span><span class="price-big '+(tinfo.near?'warn':'')+'">'+tinfo.line.toFixed(2)+'</span></div>';
+          html += '<div class="kv"><span>现价距线</span><span class="price-big">'+(tinfo.d>=0?'+':'')+tinfo.d.toFixed(2)+'%'+(tinfo.near?' ⚠️ 趋势预警':'')+'</span></div>';
+        } else {
+          html += '<div class="muted">时间或价格无效，无法计算线价</div>';
+        }
+        html += '<div style="margin-top:8px;"><button class="btn small-btn" data-trend-edit="'+p+'">修改当前趋势线</button></div>';
+        html += '<div class="edit-line hidden" id="trend-edit-'+p+'">' +
+          '<input class="tStartTime timeInput" placeholder="20251105 10:45" value="'+escapeAttr(tr.startTime)+'">' +
+          '<input class="tStartPrice priceInput" inputmode="decimal" placeholder="起点价" value="'+escapeAttr(tr.startPrice)+'">' +
+          '<input class="tEndTime timeInput" placeholder="20251105 14:00" value="'+escapeAttr(tr.endTime)+'">' +
+          '<input class="tEndPrice priceInput" inputmode="decimal" placeholder="终点价" value="'+escapeAttr(tr.endPrice)+'">' +
+          '<select class="tMode"><option value="pressure"'+(tr.mode==='pressure'?' selected':'')+'>压力线</option><option value="support"'+(tr.mode==='support'?' selected':'')+'>支撑线</option></select>' +
+          '<button class="btn primary small-btn btnSaveTrendEdit" data-trend-save="'+p+'">保存修改</button>' +
+          '<button class="btn plain small-btn btnCancelTrendEdit" data-trend-cancel="'+p+'">取消</button>' +
+          '</div>';
+      } else {
+        html += '<div class="muted">暂未设置当前趋势线</div>';
+      }
+      html += '<div class="input-line">' +
+        '<input class="tStartTime timeInput" placeholder="20251105 10:45">' +
+        '<input class="tStartPrice priceInput" inputmode="decimal" placeholder="起点价">' +
+        '<input class="tEndTime timeInput" placeholder="20251105 14:00">' +
+        '<input class="tEndPrice priceInput" inputmode="decimal" placeholder="终点价">' +
+        '<select class="tMode"><option value="pressure">压力线</option><option value="support">支撑线</option></select>' +
+        '<button class="btn primary btnSetTrend" data-period="'+p+'">设为当前趋势线</button>' +
+        '</div>';
+      if (period.trendHistory && period.trendHistory.length) {
+        html += '<details class="history" open><summary>历史趋势线（'+period.trendHistory.length+'）</summary>';
+        period.trendHistory.slice().reverse().forEach(function(h){
+          html += '<div class="history-item">' +
+            '<div>'+(h.mode==='support'?'支撑线':'压力线')+'<br>起点 '+h.startTime+' / '+h.startPrice+'<br>终点 '+h.endTime+' / '+h.endPrice+'<br>框定 '+h.setTime+' / 替换 '+h.replaceTime+'</div>' +
+            '<button class="btn plain small-btn btnUseTrendHist" data-hist-id="'+h.id+'" data-period="'+p+'">沿用此趋势线</button>' +
+            '</div>';
+        });
+        html += '</details>';
+      }
+      html += '</div>';
+
+      html += '</div>';
+    });
+    box.innerHTML = html;
+
+    document.getElementById('btnBack').onclick = closeDetail;
+    document.getElementById('nameInput').onchange = function(){ s.name = this.value.trim() || s.code; saveState(); renderDetail(); };
+    document.getElementById('baseQty').onchange = function(){ s.baseQty = this.value.trim(); saveState(); };
+    document.getElementById('tQty').onchange = function(){ s.tQty = this.value.trim(); saveState(); };
+    document.getElementById('btnSaveManual').onclick = function(){
+      var v = document.getElementById('manualPrice').value.trim();
+      s.manualPrice = v === '' ? null : v;
+      saveState(); renderDetail();
+    };
+    box.querySelectorAll('.btnSetBox').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.period;
+        var card = btn.closest('.period-card');
+        var up = card.querySelector('.upInput').value.trim();
+        var low = card.querySelector('.lowInput').value.trim();
+        if (!up || !low || isNaN(parseFloat(up)) || isNaN(parseFloat(low))) { alert('请输入有效的上沿和下沿价格'); return; }
+        if (parseFloat(up) <= parseFloat(low)) { alert('上沿必须大于下沿'); return; }
+        var period = ensurePeriod(s, p);
+        var t = nowStr();
+        if (period.current) {
+          period.history.push({ id: uid('h'), upper: period.current.upper, lower: period.current.lower, setTime: period.current.setTime, replaceTime: t });
+        }
+        period.current = { id: uid('cur'), upper: up, lower: low, setTime: t };
+        saveState(); renderDetail();
+      };
+    });
+    box.querySelectorAll('[data-edit]').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.edit;
+        var line = document.getElementById('edit-' + p);
+        if (line) line.classList.toggle('hidden');
+      };
+    });
+    box.querySelectorAll('[data-edit-cancel]').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.editCancel;
+        var line = document.getElementById('edit-' + p);
+        if (line) line.classList.add('hidden');
+      };
+    });
+    box.querySelectorAll('[data-edit-save]').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.editSave;
+        var line = document.getElementById('edit-' + p);
+        var up = line.querySelector('.editUp').value.trim();
+        var low = line.querySelector('.editLow').value.trim();
+        if (!up || !low || isNaN(parseFloat(up)) || isNaN(parseFloat(low))) { alert('请输入有效的上沿和下沿价格'); return; }
+        if (parseFloat(up) <= parseFloat(low)) { alert('上沿必须大于下沿'); return; }
+        var period = ensurePeriod(s, p);
+        if (!period.current) return;
+        period.current.upper = up;
+        period.current.lower = low;
+        saveState(); renderDetail();
+      };
+    });
+    box.querySelectorAll('.btnUseHist').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.period;
+        var histId = btn.dataset.histId;
+        useHistoryBox(s, p, histId);
+      };
+    });
+    box.querySelectorAll('.btnSetTrend').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.period;
+        var trendBlock = btn.closest('.sub-block');
+        var startTime = trendBlock.querySelector('.tStartTime').value.trim();
+        var startPrice = trendBlock.querySelector('.tStartPrice').value.trim();
+        var endTime = trendBlock.querySelector('.tEndTime').value.trim();
+        var endPrice = trendBlock.querySelector('.tEndPrice').value.trim();
+        var mode = trendBlock.querySelector('.tMode').value;
+        if (!startTime || !endTime || !startPrice || !endPrice) { alert('起点/终点时间和价格都要填'); return; }
+        if (isNaN(parseCompactTime(startTime)) || isNaN(parseCompactTime(endTime))) { alert('时间格式请用 20251105 10:45'); return; }
+        if (parseCompactTime(startTime) === parseCompactTime(endTime)) { alert('起点和终点时间不能相同'); return; }
+        if (isNaN(parseFloat(startPrice)) || isNaN(parseFloat(endPrice))) { alert('价格无效'); return; }
+        var period = ensurePeriod(s, p);
+        var t = nowStr();
+        if (period.trendCurrent) {
+          var tr = period.trendCurrent;
+          period.trendHistory.push({ id: uid('t'), startTime: tr.startTime, startPrice: tr.startPrice, endTime: tr.endTime, endPrice: tr.endPrice, mode: tr.mode, setTime: tr.setTime, replaceTime: t });
+        }
+        period.trendCurrent = { id: uid('tcur'), startTime: startTime, startPrice: startPrice, endTime: endTime, endPrice: endPrice, mode: mode, setTime: t };
+        saveState(); renderDetail();
+      };
+    });
+    box.querySelectorAll('[data-trend-edit]').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.trendEdit;
+        var line = document.getElementById('trend-edit-' + p);
+        if (line) line.classList.toggle('hidden');
+      };
+    });
+    box.querySelectorAll('[data-trend-cancel]').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.trendCancel;
+        var line = document.getElementById('trend-edit-' + p);
+        if (line) line.classList.add('hidden');
+      };
+    });
+    box.querySelectorAll('[data-trend-save]').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.trendSave;
+        var line = document.getElementById('trend-edit-' + p);
+        var startTime = line.querySelector('.tStartTime').value.trim();
+        var startPrice = line.querySelector('.tStartPrice').value.trim();
+        var endTime = line.querySelector('.tEndTime').value.trim();
+        var endPrice = line.querySelector('.tEndPrice').value.trim();
+        var mode = line.querySelector('.tMode').value;
+        if (!startTime || !endTime || !startPrice || !endPrice) { alert('起点/终点时间和价格都要填'); return; }
+        if (isNaN(parseCompactTime(startTime)) || isNaN(parseCompactTime(endTime)) || parseCompactTime(startTime) === parseCompactTime(endTime)) { alert('时间格式或区间无效，格式如 20251105 10:45'); return; }
+        if (isNaN(parseFloat(startPrice)) || isNaN(parseFloat(endPrice))) { alert('价格无效'); return; }
+        var period = ensurePeriod(s, p);
+        if (!period.trendCurrent) return;
+        period.trendCurrent.startTime = startTime;
+        period.trendCurrent.startPrice = startPrice;
+        period.trendCurrent.endTime = endTime;
+        period.trendCurrent.endPrice = endPrice;
+        period.trendCurrent.mode = mode;
+        saveState(); renderDetail();
+      };
+    });
+    box.querySelectorAll('.btnUseTrendHist').forEach(function(btn){
+      btn.onclick = function(){
+        var p = btn.dataset.period;
+        var histId = btn.dataset.histId;
+        useHistoryTrend(s, p, histId);
+      };
+    });
+  }
+
+  function renderToday(){
+    var box = document.getElementById('todayList');
+    var html = '';
+    var count = 0;
+    state.stocks.forEach(function(s){
+      PERIODS.forEach(function(p){
+        var period = s.periods && s.periods[p];
+        if (!period) return;
+        var info = distInfo(s, p);
+        var tinfo = trendDistInfo(s, p);
+        if (!info && !tinfo) return;
+        count++;
+        var hot = (info && info.hot) || (tinfo && tinfo.hot);
+        html += '<div class="card '+(hot?'period-card hot':'')+'">';
+        html += '<div class="row between"><strong>'+escapeHtml(s.name)+' <span class="muted">'+s.code+'</span></strong><span class="tag '+(hot?'hot':'')+'">'+p+'分钟</span></div>';
+        if (info) {
+          html += '<div class="kv"><span>箱体</span><span>上沿 <span class="price-big">'+info.up+'</span> / 下沿 <span class="price-big">'+info.low+'</span></span></div>';
+          html += '<div class="kv"><span>现价 / 距上下沿</span><span>'+info.price+' / '+(info.dUp>=0?'+':'')+info.dUp.toFixed(2)+'% , '+(info.dLow>=0?'+':'')+info.dLow.toFixed(2)+'%</span></div>';
+          if (info.nearUp) html += '<div><span class="tag hot" style="margin-top:6px; display:inline-block;">箱体压力预警：上沿下方2%内</span></div>';
+          if (info.nearLow) html += '<div><span class="tag hot" style="margin-top:6px; display:inline-block;">箱体支撑预警：下沿上方2%内</span></div>';
+        }
+        if (tinfo) {
+          html += '<div class="kv"><span>趋势线</span><span>'+(tinfo.mode==='support'?'支撑线':'压力线')+' 线价 <span class="price-big">'+tinfo.line.toFixed(2)+'</span></span></div>';
+          html += '<div class="kv"><span>现价距线</span><span class="price-big">'+(tinfo.d>=0?'+':'')+tinfo.d.toFixed(2)+'%</span></div>';
+          if (tinfo.near) html += '<div><span class="tag hot" style="margin-top:6px; display:inline-block;">趋势线预警：'+(tinfo.mode==='support'?'线上方2%内':'线下方2%内')+'</span></div>';
+        }
+        if (!info && !tinfo) html += '<div class="muted">未刷新行情或未手动输入现价</div>';
+        html += '</div>';
+      });
+    });
+    if (!count) html = '<div class="empty">还没有设置任何当前箱体或趋势线。</div>';
+    box.innerHTML = html;
+  }
+
+  function exportBackup(){
+    var lines = [];
+    state.stocks.forEach(function(s){
+      lines.push('股票：' + s.name + '（' + s.code + '）');
+      PERIODS.forEach(function(p){
+        var period = s.periods && s.periods[p];
+        if (!period) return;
+        if (period.current) {
+          lines.push(p + '分钟 当前箱体：上沿 ' + period.current.upper + ' / 下沿 ' + period.current.lower + ' / 框定 ' + period.current.setTime);
+        }
+        if (period.history && period.history.length) {
+          lines.push(p + '分钟 历史箱体：');
+          period.history.forEach(function(h){
+            lines.push('  - 上沿 ' + h.upper + ' / 下沿 ' + h.lower + ' / 框定 ' + h.setTime + ' / 替换 ' + h.replaceTime);
+          });
+        }
+        if (period.trendCurrent) {
+          var tr = period.trendCurrent;
+          lines.push(p + '分钟 当前趋势线：' + (tr.mode==='support'?'支撑':'压力') + ' / 起点 ' + tr.startTime + ' ' + tr.startPrice + ' / 终点 ' + tr.endTime + ' ' + tr.endPrice + ' / 框定 ' + tr.setTime);
+        }
+        if (period.trendHistory && period.trendHistory.length) {
+          lines.push(p + '分钟 历史趋势线：');
+          period.trendHistory.forEach(function(h){
+            lines.push('  - ' + (h.mode==='support'?'支撑':'压力') + ' / 起点 ' + h.startTime + ' ' + h.startPrice + ' / 终点 ' + h.endTime + ' ' + h.endPrice + ' / 框定 ' + h.setTime + ' / 替换 ' + h.replaceTime);
+          });
+        }
+      });
+      lines.push('');
+    });
+    document.getElementById('backupText').value = lines.join('\n');
+  }
+
+  function importBackup(){
+    var text = document.getElementById('backupText').value;
+    if (!text.trim()) { alert('请先粘贴备份文本'); return; }
+    if (!confirm('导入会覆盖现有股票、箱体和趋势线数据（底仓/做T数量会尽量按代码保留）。继续？')) return;
+    var lines = text.split(/\r?\n/);
+    var newStocks = [];
+    var cur = null;
+    var curPeriod = null;
+    var inHistory = false;
+    var inTrendHistory = false;
+    lines.forEach(function(line){
+      line = line.trim();
+      if (!line) { curPeriod = null; inHistory = false; inTrendHistory = false; return; }
+      var mStock = line.match(/^股票：(.+?)（(\d{6})）$/);
+      if (mStock) {
+        cur = { code: mStock[2], name: mStock[1].trim(), baseQty: '', tQty: '', currentPrice: null, manualPrice: null, periods: {} };
+        PERIODS.forEach(function(p){ cur.periods[p] = { current: null, history: [], trendCurrent: null, trendHistory: [] }; });
+        newStocks.push(cur);
+        curPeriod = null; inHistory = false; inTrendHistory = false;
+        return;
+      }
+      var mCur = line.match(/^(20|60|180|540)分钟 当前箱体：上沿 ([\d.]+) \/ 下沿 ([\d.]+) \/ 框定 (.+)$/);
+      if (mCur && cur) {
+        var p1 = mCur[1];
+        ensurePeriod(cur, p1).current = { id: uid('cur'), upper: mCur[2], lower: mCur[3], setTime: mCur[4] };
+        curPeriod = p1; inHistory = false; inTrendHistory = false;
+        return;
+      }
+      var mHistTitle = line.match(/^(20|60|180|540)分钟 历史箱体：$/);
+      if (mHistTitle && cur) {
+        curPeriod = mHistTitle[1]; inHistory = true; inTrendHistory = false;
+        return;
+      }
+      var mHist = line.match(/^- 上沿 ([\d.]+) \/ 下沿 ([\d.]+) \/ 框定 (.+?) \/ 替换 (.+)$/);
+      if (mHist && cur && curPeriod && inHistory) {
+        ensurePeriod(cur, curPeriod).history.push({ id: uid('h'), upper: mHist[1], lower: mHist[2], setTime: mHist[3], replaceTime: mHist[4] });
+        return;
+      }
+      var mTrendCur = line.match(/^(20|60|180|540)分钟 当前趋势线：(支撑|压力) \/ 起点 (\d{8} \d{1,2}:?\d{2}) ([\d.]+) \/ 终点 (\d{8} \d{1,2}:?\d{2}) ([\d.]+) \/ 框定 (.+)$/);
+      if (mTrendCur && cur) {
+        var p2 = mTrendCur[1];
+        ensurePeriod(cur, p2).trendCurrent = {
+          id: uid('tcur'), mode: mTrendCur[2]==='支撑'?'support':'pressure',
+          startTime: mTrendCur[3], startPrice: mTrendCur[4],
+          endTime: mTrendCur[5], endPrice: mTrendCur[6], setTime: mTrendCur[7]
+        };
+        curPeriod = p2; inHistory = false; inTrendHistory = false;
+        return;
+      }
+      var mTrendHistTitle = line.match(/^(20|60|180|540)分钟 历史趋势线：$/);
+      if (mTrendHistTitle && cur) {
+        curPeriod = mTrendHistTitle[1]; inTrendHistory = true; inHistory = false;
+        return;
+      }
+      var mTrendHist = line.match(/^- (支撑|压力) \/ 起点 (\d{8} \d{1,2}:?\d{2}) ([\d.]+) \/ 终点 (\d{8} \d{1,2}:?\d{2}) ([\d.]+) \/ 框定 (.+?) \/ 替换 (.+)$/);
+      if (mTrendHist && cur && curPeriod && inTrendHistory) {
+        ensurePeriod(cur, curPeriod).trendHistory.push({
+          id: uid('t'), mode: mTrendHist[1]==='支撑'?'support':'pressure',
+          startTime: mTrendHist[2], startPrice: mTrendHist[3],
+          endTime: mTrendHist[4], endPrice: mTrendHist[5], setTime: mTrendHist[6], replaceTime: mTrendHist[7]
+        });
+        return;
+      }
+    });
+    if (!newStocks.length) { alert('没有解析到股票数据，请检查备份格式'); return; }
+    if (newStocks.length > 10) newStocks = newStocks.slice(0, 10);
+    newStocks.forEach(function(ns){
+      var old = findStock(ns.code);
+      if (old) { ns.baseQty = old.baseQty; ns.tQty = old.tQty; ns.manualPrice = old.manualPrice; }
+    });
+    state.stocks = newStocks;
+    saveState();
+    renderList(); renderToday();
+    alert('导入完成，共 ' + newStocks.length + ' 只股票');
+  }
+
+  function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+
+  document.getElementById('btnAdd').onclick = function(){ addStock(document.getElementById('addCode').value); document.getElementById('addCode').value=''; };
+  document.getElementById('btnRefreshAll').onclick = function(){ refreshAll(); };
+  document.getElementById('btnExport').onclick = exportBackup;
+  document.getElementById('btnImport').onclick = importBackup;
+  document.getElementById('btnClearAll').onclick = function(){
+    if (confirm('确定清空全部股票、箱体和趋势线数据？')) { state = { stocks: [] }; saveState(); renderList(); renderToday(); document.getElementById('backupText').value=''; closeDetail(); }
+  };
+  document.querySelectorAll('.tabbar button').forEach(function(btn){
+    btn.onclick = function(){
+      document.querySelectorAll('.tabbar button').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      var tab = btn.dataset.tab;
+      document.getElementById('pageList').classList.add('hidden');
+      document.getElementById('pageDetail').classList.add('hidden');
+      document.getElementById('pageListToday').classList.add('hidden');
+      document.getElementById('pageBackup').classList.add('hidden');
+      if (tab === 'list') { document.getElementById('pageList').classList.remove('hidden'); document.getElementById('pageTitle').textContent='自选股'; closeDetail(); }
+      if (tab === 'today') { document.getElementById('pageListToday').classList.remove('hidden'); document.getElementById('pageTitle').textContent='今日清单'; renderToday(); }
+      if (tab === 'backup') { document.getElementById('pageBackup').classList.remove('hidden'); document.getElementById('pageTitle').textContent='备份'; }
+    };
+  });
+
+  renderList();
+  renderToday();
+})();
+</script>
+</body>
+</html>
