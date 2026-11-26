@@ -113,16 +113,26 @@
 
   var PERIODS = ['20', '60', '180', '540'];
   var STORAGE_KEY = 'stock_box_radar_v7'; 
-  var state = loadState();
-  var currentStockCode = null;
-
+  
+  // 【修复点】：优先读 v7，如果没有，尝试读 v6 自动搬家
   function loadState(){
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) return migrate(JSON.parse(raw));
+      
+      var oldRaw = localStorage.getItem('stock_box_radar_v6');
+      if (oldRaw) {
+        var oldState = migrate(JSON.parse(oldRaw));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(oldState));
+        return oldState;
+      }
     } catch(e) {}
     return { stocks: [] };
   }
+
+  var state = loadState();
+  var currentStockCode = null;
+
   function migrate(st){
     if (!st || !st.stocks) return { stocks: [] };
     st.stocks.forEach(function(s){
@@ -286,7 +296,6 @@
     var rrText = '';
     var rrBad = false;
     
-    // 修改点：小于 2 就标红
     if (rr >= 2) {
       rrText = rr.toFixed(1) + ' : 1';
     } else {
