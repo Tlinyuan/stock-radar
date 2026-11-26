@@ -37,6 +37,8 @@
   .kv span:first-child { color:#86909c; }
   .price-big { font-size:17px; font-weight:800; color:#f53f3f; }
   .price-big.warn { background:#ffece8; border-radius:4px; padding:0 4px; }
+  .rr-text { font-size:15px; font-weight:700; color:#1664ff; }
+  .rr-bad { color:#f53f3f; }
   .input-line { display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap; }
   .input-line input { flex:1; min-width:0; border:1px solid #d9d9d9; border-radius:6px; padding:7px 8px; font-size:14px; background:#fff; }
   .input-line input.small { width:80px; flex:none; }
@@ -80,7 +82,7 @@
 <div id="pageDetail" class="page hidden"></div>
 
 <div id="pageListToday" class="page hidden">
-  <div class="notice">今日清单：只列当前生效箱体和当前生效趋势线。箱体压力预警=上沿下方2%内；箱体支撑预警=下沿上方2%内；趋势线压力=线下方2%内；趋势线支撑=线上方2%内。</div>
+  <div class="notice">今日清单：只列当前生效箱体和当前生效趋势线。箱体压力预警=上沿下方2%内；箱体支撑预警=下沿上方2%内。</div>
   <div id="todayList"></div>
 </div>
 
@@ -110,7 +112,7 @@
   'use strict';
 
   var PERIODS = ['20', '60', '180', '540'];
-  var STORAGE_KEY = 'stock_box_radar_v6';
+  var STORAGE_KEY = 'stock_box_radar_v7'; 
   var state = loadState();
   var currentStockCode = null;
 
@@ -239,7 +241,6 @@
     return null;
   }
 
-  // 解析紧凑时间：20251105 10:45 或 20251105 1045
   function parseCompactTime(str){
     if (!str) return NaN;
     str = String(str).trim().replace(/\s+/g, ' ');
@@ -273,19 +274,54 @@
     return { price: price, line: line, d: d, near: near, mode: mode, hot: near };
   }
 
+  function getStaticRR(upper, lower) {
+    var u = parseFloat(upper);
+    var l = parseFloat(lower);
+    if (isNaN(u) || isNaN(l) || l <= 0 || u <= l) return null;
+    
+    var risk = l * 0.01; 
+    var reward = u - l;  
+    
+    var rr = reward / risk;
+    var rrText = '';
+    var rrBad = false;
+    
+    // 修改点：小于 2 就标红
+    if (rr >= 2) {
+      rrText = rr.toFixed(1) + ' : 1';
+    } else {
+      rrText = rr.toFixed(1) + ' : 1';
+      rrBad = true;
+    }
+    return { text: rrText, isBad: rrBad };
+  }
+
   function distInfo(s, p){
     var period = s.periods && s.periods[p];
     if (!period || !period.current) return null;
-    var price = priceOf(s);
-    if (price == null || isNaN(price)) return null;
+    
     var up = parseFloat(period.current.upper);
     var low = parseFloat(period.current.lower);
     if (isNaN(up) || isNaN(low)) return null;
+
+    var rrInfo = getStaticRR(up, low);
+
+    var price = priceOf(s);
+    if (price == null || isNaN(price)) {
+        return { up: up, low: low, hasPrice: false, rrInfo: rrInfo, hot: false };
+    }
+
     var dUp = (price - up) / up * 100;
     var dLow = (price - low) / low * 100;
     var nearUp = price <= up && price >= up * 0.98;
     var nearLow = price >= low && price <= low * 1.02;
-    return { price: price, up: up, low: low, dUp: dUp, dLow: dLow, nearUp: nearUp, nearLow: nearLow, hot: nearUp || nearLow };
+
+    return { 
+        price: price, up: up, low: low, 
+        dUp: dUp, dLow: dLow, nearUp: nearUp, nearLow: nearLow, 
+        hot: nearUp || nearLow, 
+        hasPrice: true, rrInfo: rrInfo 
+    };
   }
 
   function renderList(){
@@ -376,19 +412,29 @@
       html += '<div class="period-card '+(hot?'hot':'')+'">';
       html += '<div class="period-title"><strong>'+p+'分钟</strong>'+(hot?'<span class="tag hot">进入预警区</span>':'<span class="tag">'+(period.current||period.trendCurrent?'生效中':'未设置')+'</span>')+'</div>';
 
-      // 箱体
+      // 箱体区
       html += '<div class="sub-title">水平箱体</div>';
       if (period.current) {
         html += '<div class="kv"><span>当前上沿（压力）</span><span class="price-big '+(info&&info.nearUp?'warn':'')+'">'+period.current.upper+'</span></div>';
         html += '<div class="kv"><span>当前下沿（支撑）</span><span class="price-big '+(info&&info.nearLow?'warn':'')+'">'+period.current.lower+'</span></div>';
+        
+        if (info && info.rrInfo) {
+          html += '<div class="kv" style="margin-top:4px; padding-top:6px; border-top:1px dashed #f2f3f5;">' +
+                  '<span>箱体盈亏比（下沿买止损1%）</span>' +
+                  '<span class="rr-text '+(info.rrInfo.isBad?'rr-bad':'')+'">'+info.rrInfo.text+'</span>' +
+                  '</div>';
+        }
+        
         html += '<div class="kv"><span>框定时间</span><span>'+period.current.setTime+'</span></div>';
-        if (info) {
+        
+        if (info && info.hasPrice) {
           html += '<div class="kv"><span>距上沿</span><span class="price-big">'+(info.dUp>=0?'+':'')+info.dUp.toFixed(2)+'%'+(info.nearUp?' ⚠️ 压力预警':'')+'</span></div>';
           html += '<div class="kv"><span>距下沿</span><span class="price-big">'+(info.dLow>=0?'+':'')+info.dLow.toFixed(2)+'%'+(info.nearLow?' ⚠️ 支撑预警':'')+'</span></div>';
           html += '<div class="muted">压力预警区：上沿下方2%内；支撑预警区：下沿上方2%内</div>';
         } else {
           html += '<div class="muted">刷新行情或手动输入现价后计算距离</div>';
         }
+        
         html += '<div style="margin-top:8px;"><button class="btn small-btn" data-edit="'+p+'">修改当前箱体</button></div>';
         html += '<div class="edit-line hidden" id="edit-'+p+'">' +
           '<input class="editUp" inputmode="decimal" value="'+escapeAttr(period.current.upper)+'">' +
@@ -401,18 +447,22 @@
         html += '<div class="muted">暂未设置当前箱体</div>';
       }
       html += '<div class="input-line"><span class="muted">新箱体上沿</span><input class="small upInput" inputmode="decimal" placeholder="上沿价"><span class="muted">下沿</span><input class="small lowInput" inputmode="decimal" placeholder="下沿价"><button class="btn primary btnSetBox" data-period="'+p+'">设为当前箱体</button></div>';
+      
       if (period.history && period.history.length) {
         html += '<details class="history" open><summary>历史箱体（'+period.history.length+'）</summary>';
         period.history.slice().reverse().forEach(function(h){
+          var histRR = getStaticRR(h.upper, h.lower);
+          var histRRHtml = histRR ? '<br><span class="rr-text '+(histRR.isBad?'rr-bad':'')+'" style="font-size:12px;">盈亏比 '+histRR.text+'</span>' : '';
+          
           html += '<div class="history-item">' +
-            '<div>上沿 <span class="price-old">'+h.upper+'</span> / 下沿 <span class="price-old">'+h.lower+'</span><br>框定 '+h.setTime+' / 替换 '+h.replaceTime+'</div>' +
+            '<div>上沿 <span class="price-old">'+h.upper+'</span> / 下沿 <span class="price-old">'+h.lower+'</span>'+histRRHtml+'<br>框定 '+h.setTime+' / 替换 '+h.replaceTime+'</div>' +
             '<button class="btn plain small-btn btnUseHist" data-hist-id="'+h.id+'" data-period="'+p+'">沿用此箱体</button>' +
             '</div>';
         });
         html += '</details>';
       }
 
-      // 趋势线：紧凑时间格式
+      // 趋势线区
       html += '<div class="sub-block"><div class="sub-title">倾斜趋势线 <span class="muted" style="font-weight:400;">时间格式：20251105 10:45</span></div>';
       if (period.trendCurrent) {
         var tr = period.trendCurrent;
@@ -611,16 +661,24 @@
         html += '<div class="row between"><strong>'+escapeHtml(s.name)+' <span class="muted">'+s.code+'</span></strong><span class="tag '+(hot?'hot':'')+'">'+p+'分钟</span></div>';
         if (info) {
           html += '<div class="kv"><span>箱体</span><span>上沿 <span class="price-big">'+info.up+'</span> / 下沿 <span class="price-big">'+info.low+'</span></span></div>';
-          html += '<div class="kv"><span>现价 / 距上下沿</span><span>'+info.price+' / '+(info.dUp>=0?'+':'')+info.dUp.toFixed(2)+'% , '+(info.dLow>=0?'+':'')+info.dLow.toFixed(2)+'%</span></div>';
-          if (info.nearUp) html += '<div><span class="tag hot" style="margin-top:6px; display:inline-block;">箱体压力预警：上沿下方2%内</span></div>';
-          if (info.nearLow) html += '<div><span class="tag hot" style="margin-top:6px; display:inline-block;">箱体支撑预警：下沿上方2%内</span></div>';
+          
+          if (info.rrInfo) {
+            html += '<div class="kv"><span>盈亏比</span><span class="rr-text '+(info.rrInfo.isBad?'rr-bad':'')+'">'+info.rrInfo.text+'</span></div>';
+          }
+
+          if (info.hasPrice) {
+            html += '<div class="kv"><span>现价 / 距上下沿</span><span>'+info.price+' / '+(info.dUp>=0?'+':'')+info.dUp.toFixed(2)+'% , '+(info.dLow>=0?'+':'')+info.dLow.toFixed(2)+'%</span></div>';
+            if (info.nearUp) html += '<div><span class="tag hot" style="margin-top:6px; display:inline-block;">箱体压力预警：上沿下方2%内</span></div>';
+            if (info.nearLow) html += '<div><span class="tag hot" style="margin-top:6px; display:inline-block;">箱体支撑预警：下沿上方2%内</span></div>';
+          } else {
+            html += '<div class="muted">未刷新行情或未手动输入现价</div>';
+          }
         }
         if (tinfo) {
           html += '<div class="kv"><span>趋势线</span><span>'+(tinfo.mode==='support'?'支撑线':'压力线')+' 线价 <span class="price-big">'+tinfo.line.toFixed(2)+'</span></span></div>';
           html += '<div class="kv"><span>现价距线</span><span class="price-big">'+(tinfo.d>=0?'+':'')+tinfo.d.toFixed(2)+'%</span></div>';
           if (tinfo.near) html += '<div><span class="tag hot" style="margin-top:6px; display:inline-block;">趋势线预警：'+(tinfo.mode==='support'?'线上方2%内':'线下方2%内')+'</span></div>';
         }
-        if (!info && !tinfo) html += '<div class="muted">未刷新行情或未手动输入现价</div>';
         html += '</div>';
       });
     });
