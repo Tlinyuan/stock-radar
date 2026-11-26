@@ -112,19 +112,22 @@
   'use strict';
 
   var PERIODS = ['20', '60', '180', '540'];
-  var STORAGE_KEY = 'stock_box_radar_v7'; 
+  var STORAGE_KEY = 'stock_box_radar_v11'; // 版本号升级
   
-  // 【修复点】：优先读 v7，如果没有，尝试读 v6 自动搬家
   function loadState(){
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) return migrate(JSON.parse(raw));
       
-      var oldRaw = localStorage.getItem('stock_box_radar_v6');
-      if (oldRaw) {
-        var oldState = migrate(JSON.parse(oldRaw));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(oldState));
-        return oldState;
+      // 自动找回旧数据
+      var oldKeys = ['stock_box_radar_v10', 'stock_box_radar_v9', 'stock_box_radar_v8', 'stock_box_radar_v7', 'stock_box_radar_v6', 'stock_box_radar_v5'];
+      for (var i=0; i<oldKeys.length; i++) {
+        var oldRaw = localStorage.getItem(oldKeys[i]);
+        if (oldRaw) {
+          var oldState = migrate(JSON.parse(oldRaw));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(oldState));
+          return oldState;
+        }
       }
     } catch(e) {}
     return { stocks: [] };
@@ -284,25 +287,32 @@
     return { price: price, line: line, d: d, near: near, mode: mode, hot: near };
   }
 
+  // 【最新需求】：止损价改为 下沿 * 0.97
   function getStaticRR(upper, lower) {
     var u = parseFloat(upper);
     var l = parseFloat(lower);
     if (isNaN(u) || isNaN(l) || l <= 0 || u <= l) return null;
     
-    var risk = l * 0.01; 
-    var reward = u - l;  
+    // 1. 止损价 = 下沿 * 0.97
+    var stopPriceVal = l * 0.97;
+    // 2. 盈利空间 = 上沿 - 下沿
+    var profitSpace = u - l;
+    // 3. 亏损空间 = 下沿 - 止损价
+    var lossSpace = l - stopPriceVal;
     
-    var rr = reward / risk;
-    var rrText = '';
-    var rrBad = false;
+    // 4. 盈亏比 = 盈利空间 / 亏损空间
+    var rr = profitSpace / lossSpace;
     
-    if (rr >= 2) {
-      rrText = rr.toFixed(1) + ' : 1';
-    } else {
-      rrText = rr.toFixed(1) + ' : 1';
-      rrBad = true;
-    }
-    return { text: rrText, isBad: rrBad };
+    // 盈亏比小于 2 标红
+    var rrBad = rr < 2;
+    
+    return { 
+      text: rr.toFixed(2) + ' : 1', 
+      isBad: rrBad, 
+      stopPriceStr: stopPriceVal.toFixed(3),
+      profitSpaceStr: profitSpace.toFixed(3),
+      lossSpaceStr: lossSpace.toFixed(4)
+    };
   }
 
   function distInfo(s, p){
@@ -429,7 +439,15 @@
         
         if (info && info.rrInfo) {
           html += '<div class="kv" style="margin-top:4px; padding-top:6px; border-top:1px dashed #f2f3f5;">' +
-                  '<span>箱体盈亏比（下沿买止损1%）</span>' +
+                  '<span>止损价 (下沿×0.97)</span>' +
+                  '<span class="muted">'+info.rrInfo.stopPriceStr+'</span>' +
+                  '</div>';
+          html += '<div class="kv">' +
+                  '<span>盈亏比计算</span>' +
+                  '<span class="muted">盈利'+info.rrInfo.profitSpaceStr+' / 亏损'+info.rrInfo.lossSpaceStr+'</span>' +
+                  '</div>';
+          html += '<div class="kv">' +
+                  '<span>箱体盈亏比</span>' +
                   '<span class="rr-text '+(info.rrInfo.isBad?'rr-bad':'')+'">'+info.rrInfo.text+'</span>' +
                   '</div>';
         }
